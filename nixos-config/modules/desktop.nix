@@ -1,0 +1,134 @@
+# Desktop environment: KDE Plasma 6.
+#
+# ─── Session selection ────────────────────────────────────────────────────────
+# At the SDDM login screen:
+#   • "Plasma (Wayland)" → KDE Plasma 6 on Wayland (recommended)
+#   • "Plasma (X11)"     → KDE Plasma 6 on X11 (compatibility fallback)
+#
+# ─── Bare metal note ─────────────────────────────────────────────────────────
+# On bare metal, Plasma (Wayland) is the preferred session.
+# If you experience GPU issues, fall back to Plasma (X11) at the login screen.
+
+{ pkgs, ... }:
+
+{
+  # ── Flatpak ───────────────────────────────────────────────────────────────
+  # Enables Flatpak for apps not in nixpkgs (e.g. 3D Slicer).
+  # After rebuild, add Flathub once:
+  #   flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+  # Then install 3D Slicer:
+  #   flatpak install flathub com.slicer.Slicer
+  services.flatpak.enable = true;
+
+  # ── OpenRGB (RGB lighting control) ────────────────────────────────────────
+  # Installs OpenRGB and sets up udev rules for device access.
+  services.hardware.openrgb.enable = true;
+
+  # ── DDC/CI monitor control (ddcutil) ─────────────────────────────────────
+  # Enables i2c-dev kernel module and grants the user i2c group access,
+  # which ddcutil needs to communicate with monitors over DDC/CI.
+  hardware.i2c.enable = true;
+  # ── Login manager (SDDM) ───────────────────────────────────────────────────
+  services.displayManager.sddm.enable = true;
+  services.displayManager.defaultSession = "plasma";
+
+  # ── KDE Plasma 6 ───────────────────────────────────────────────────────────
+  services.desktopManager.plasma6.enable = true;
+
+  # ── X server ───────────────────────────────────────────────────────────────
+  # Required for KDE's X11 session and XWayland (runs X11 apps inside Wayland).
+  services.xserver = {
+    enable = true;
+    xkb.layout  = "us";
+    xkb.variant = "";
+  };
+
+  # ── XDG desktop portals ────────────────────────────────────────────────────
+  xdg.portal = {
+    enable = true;
+    extraPortals = [ pkgs.kdePackages.xdg-desktop-portal-kde ];
+    config.common.default = [ "kde" ];
+  };
+
+  # ── System packages ────────────────────────────────────────────────────────
+  environment.systemPackages = with pkgs; [
+
+    # ── KDE applications ──────────────────────────────────────────────────
+    kdePackages.kate            # Text editor
+    kdePackages.kcalc           # Calculator
+    kdePackages.ark             # Archive manager (zip, tar, 7z, etc.)
+    kdePackages.filelight       # Visual disk usage
+    kdePackages.dolphin         # File manager
+    kdePackages.gwenview        # Image viewer
+    kdePackages.spectacle       # Screenshot tool
+    kdePackages.kdeconnect-kde  # Phone integration (KDE Connect)
+    # kdePackages.korganizer    # DISABLED: libgravatar-26.04.0 requires Qt6GuiTools/
+    #                            # Qt6WidgetsTools >= 6.11.0, not yet in nixpkgs unstable
+    #                            # (nixpkgs commit 15f4ee4, April 2026). Re-enable after
+    #                            # Qt 6.11 lands in nixos-unstable.
+    kdePackages.partitionmanager # Partition editor
+    qt6Packages.qtstyleplugin-kvantum  # Kvantum Qt theme engine (Qt6)
+    kdePackages.kcolorchooser   # Color picker utility
+    kdePackages.kinfocenter     # System information viewer
+    kdePackages.dolphin-plugins # Git status, audio tagging, etc. in Dolphin
+    kdePackages.wacomtablet     # Wacom drawing tablet configuration
+
+    # ── Wallpaper ─────────────────────────────────────────────────────────
+    kdePackages.wallpaper-engine-plugin  # Wallpaper Engine integration for KDE
+
+    # ── KWin effects ──────────────────────────────────────────────────────
+    kde-rounded-corners  # Third-party rounded corners (matinlotfali/KDE-Rounded-Corners)
+
+    # ── Codecs / media ────────────────────────────────────────────────────
+    gst_all_1.gst-plugins-bad   # GStreamer extra codecs (used by KDE/Qt apps)
+    gst_all_1.gst-plugins-ugly  # GStreamer patent-encumbered codecs (MP3, etc.)
+    gst_all_1.gst-libav         # GStreamer FFmpeg bridge (broad format support)
+    ffmpegthumbnailer            # Video thumbnails in Dolphin
+    libdvdcss                    # DVD decryption (for VLC playback)
+
+    # ── Network ───────────────────────────────────────────────────────────
+    networkmanager-openvpn       # OpenVPN plugin for NetworkManager / KDE applet
+
+    # ── Hardware ──────────────────────────────────────────────────────────
+    ddcutil   # Control monitor brightness/input via DDC/CI (needs hardware.i2c above)
+
+    # ── Clipboard ─────────────────────────────────────────────────────────
+    wl-clipboard    # `wl-copy` / `wl-paste` — Wayland clipboard CLI
+
+    # ── Media controls ────────────────────────────────────────────────────
+    playerctl       # CLI media control (play/pause/next via keybindings)
+    pavucontrol     # PipeWire/PulseAudio volume control GUI
+
+    # ── Brightness ────────────────────────────────────────────────────────
+    brightnessctl   # Screen brightness control (laptops)
+
+    # ── Akonadi calendar serializer (Merkuro / clock widget) ─────────────────
+    # Root cause of "no calendar events in clock widget": akonadi_serializer_kcalcore.so
+    # was missing from QT_PLUGIN_PATH. Without it, Akonadi received all calendar items
+    # but every hasPayload<KCalendarCore::Incidence::Ptr>() check failed, so nothing
+    # was ever converted to EventData and nothing reached the widget.
+    # Diagnosis: set org.kde.pim.pimeventsplugin=true in ~/.config/QtProject/qtlogging.ini
+    # to see "Item XXXX has no payload" for every event — that pointed directly here.
+    kdePackages.akonadi-calendar
+
+    # ── General Wayland / Qt support ──────────────────────────────────────
+    xdg-utils       # `xdg-open` file association handling
+    qt6.qtwayland   # Qt 6 Wayland platform plugin
+    libsForQt5.qt5ct # Qt 5 style configurator
+
+  ];
+
+  # ── Akonadi calendar serializer plugin path ────────────────────────────────
+  # Exposes akonadi_serializer_kcalcore.so to Qt's plugin loader and the
+  # .desktop service file to Akonadi via XDG_DATA_DIRS.
+  environment.sessionVariables = {
+    QT_PLUGIN_PATH = [ "${pkgs.kdePackages.akonadi-calendar}/lib/qt-6/plugins" ];
+  };
+
+  # ── Qt platform theme ──────────────────────────────────────────────────────
+  qt = {
+    enable        = true;
+    platformTheme = "kde";
+    style         = "breeze";
+  };
+}
